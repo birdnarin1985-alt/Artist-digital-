@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bio-Digital Laboratory: DNA-RNA-CPU/GPU Hybrid Simulation</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            900: '#030712',
+                            800: '#0b0f19',
+                            700: '#111827',
+                            600: '#1f2937',
+                            accent: '#00ffcc',
+                            purple: '#a855f7',
+                            pink: '#ec4899',
+                            blue: '#3b82f6'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #030712;
+            color: #f3f4f6;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .glass-panel {
+            background: rgba(11, 15, 25, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .glow-text {
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5), 0 0 20px rgba(0, 255, 204, 0.3);
+        }
+        .glow-border {
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.25);
+        }
+        /* Custom scrollbar for terminal/logs */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(3, 7, 18, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 204, 0.4);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="relative select-none">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- HUD Overlay UI (Z-index 10) -->
+    <div class="relative z-10 pointer-events-none w-full h-full flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- Top Navigation / Header -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pointer-events-auto">
+            <div class="glass-panel px-5 py-3 rounded-2xl flex items-center gap-3 glow-border">
+                <div class="w-3 h-3 rounded-full bg-cyber-accent animate-ping"></div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-wider text-cyber-accent glow-text">BIO-DIGITAL LAB v4.8</h1>
+                    <p class="text-xs text-gray-400">DNA / RNA ⇄ CPU / GPU Voxel Matrix Simulation</p>
+                </div>
+            </div>
+
+            <!-- Quick Status Metrics -->
+            <div class="flex flex-wrap gap-3">
+                <div class="glass-panel px-4 py-2 rounded-xl text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-microchip text-cyber-blue"></i>
+                    <span>GPU CORES: <strong id="stat-cores" class="text-cyber-accent">16,384</strong></span>
+                </div>
+                <div class="glass-panel px-4 py-2 rounded-xl text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-dna text-cyber-pink"></i>
+                    <span>GENOME BASE: <strong id="stat-base" class="text-cyber-pink">4,096 bp/s</strong></span>
+                </div>
+                <div class="glass-panel px-4 py-2 rounded-xl text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-yellow-400"></i>
+                    <span>SYNC RATE: <strong id="stat-sync" class="text-yellow-400">99.8%</strong></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Center Interactive Hint -->
+        <div id="hint-box" class="self-center glass-panel px-6 py-2 rounded-full text-xs text-center text-cyber-accent animate-pulse pointer-events-auto cursor-pointer shadow-lg" onclick="triggerBurstMutation()">
+            <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> Click here or anywhere in 3D space to trigger Genetic-Silicon Mutation Pulse!
+        </div>
+
+        <!-- Bottom Control Deck & Logs -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 pointer-events-auto">
+            
+            <!-- Control Panel -->
+            <div class="glass-panel p-4 rounded-2xl flex flex-col gap-3">
+                <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <span class="text-xs font-bold text-cyber-accent uppercase tracking-widest"><i class="fa-solid fa-sliders mr-1"></i> System Parameters</span>
+                    <span id="sim-status" class="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-800">RUNNING</span>
+                </div>
+                
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <div class="flex justify-between mb-1 text-gray-300">
+                            <span>DNA / RNA Helix Pitch</span>
+                            <span id="val-pitch" class="text-cyber-accent">2.5</span>
+                        </div>
+                        <input type="range" id="slider-pitch" min="1" max="5" step="0.1" value="2.5" class="w-full accent-cyber-accent cursor-pointer">
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1 text-gray-300">
+                            <span>Silicon Injection Rate</span>
+                            <span id="val-injection" class="text-cyber-purple">5.0x</span>
+                        </div>
+                        <input type="range" id="slider-injection" min="1" max="10" step="0.5" value="5" class="w-full accent-cyber-purple cursor-pointer">
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1 text-gray-300">
+                            <span>Voxel Density / Resolution</span>
+                            <span id="val-density" class="text-cyber-blue">High</span>
+                        </div>
+                        <input type="range" id="slider-density" min="1" max="3" step="1" value="2" class="w-full accent-cyber-blue cursor-pointer">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button onclick="toggleSimulationState()" id="btn-toggle" class="bg-cyber-accent/20 hover:bg-cyber-accent/30 text-cyber-accent border border-cyber-accent/50 py-2 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-pause" id="icon-pause"></i> <span id="text-pause">Pause Sim</span>
+                    </button>
+                    <button onclick="triggerBurstMutation()" class="bg-cyber-purple/20 hover:bg-cyber-purple/30 text-cyber-purple border border-cyber-purple/50 py-2 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-dna"></i> Mutate DNA
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bio-Silicon Info / Diagnostics -->
+            <div class="glass-panel p-4 rounded-2xl flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center border-b border-gray-800 pb-2 mb-2">
+                        <span class="text-xs font-bold text-cyber-pink uppercase tracking-widest"><i class="fa-solid fa-microscope mr-1"></i> Hybrid Architecture Core</span>
+                        <span class="text-[10px] text-gray-400">Node #A-808</span>
+                    </div>
+                    <p class="text-xs text-gray-300 leading-relaxed">
+                        Merging organic nucleotide sequences (adenine, thymine, guanine, cytosine) directly into parallel transistor gates. Quantum RNA packet injection accelerates neural net weights via biological computing pathways.
+                    </p>
+                </div>
+                <div class="grid grid-cols-3 gap-2 mt-3 text-center">
+                    <div class="bg-cyber-800/60 p-2 rounded-xl border border-gray-800">
+                        <div class="text-[10px] text-gray-400">RNA Stream</div>
+                        <div id="metric-rna" class="text-sm font-bold text-cyber-pink mt-0.5">842 GB/s</div>
+                    </div>
+                    <div class="bg-cyber-800/60 p-2 rounded-xl border border-gray-800">
+                        <div class="text-[10px] text-gray-400">GPU FLOPS</div>
+                        <div id="metric-flops" class="text-sm font-bold text-cyber-accent mt-0.5">142 PFLOPS</div>
+                    </div>
+                    <div class="bg-cyber-800/60 p-2 rounded-xl border border-gray-800">
+                        <div class="text-[10px] text-gray-400">Core Temp</div>
+                        <div id="metric-temp" class="text-sm font-bold text-yellow-400 mt-0.5">38.4°C</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Neural / Bio Terminal Logs -->
+            <div class="glass-panel p-4 rounded-2xl flex flex-col h-40 lg:h-auto">
+                <div class="flex justify-between items-center border-b border-gray-800 pb-2 mb-2">
+                    <span class="text-xs font-bold text-cyber-blue uppercase tracking-widest"><i class="fa-solid fa-terminal mr-1"></i> Bio-Digital Terminal</span>
+                    <div class="flex items-center gap-1">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="text-[10px] text-gray-400">Live Stream</span>
+                    </div>
+                </div>
+                <div id="terminal-logs" class="flex-1 overflow-y-auto font-mono text-[11px] text-gray-300 space-y-1 pr-1">
+                    <div class="text-cyber-accent">[00:00:01] System initialized. Loading voxel matrices...</div>
+                    <div class="text-gray-400">[00:00:02] Double helix DNA strands calibrated with silicon substrate.</div>
+                    <div class="text-cyber-purple">[00:00:03] RNA injection channels active at 5.0x frequency.</div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Three.js Simulation Script -->
+    <script>
+        // --- Application State ---
+        let scene, camera, renderer, clock;
+        let dnaGroup, cpuCoreGroup, rnaParticlesGroup, injectionPacketsGroup;
+        let isRunning = true;
+        let simulationSpeed = 1.0;
+        let helixPitch = 2.5;
+        let injectionRate = 5.0;
+        let voxelDensity = 2; // 1: Low, 2: Med, 3: High
+
+        // Mouse interaction for camera rotation
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let cameraAngleX = 0;
+        let cameraAngleY = 0;
+        let cameraDistance = 35;
+
+        // --- Initialization ---
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x030712, 0.02);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            updateCameraPosition();
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            container.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const pointLight1 = new THREE.PointLight(0x00ffcc, 3, 50);
+            pointLight1.position.set(10, 15, 10);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0xec4899, 3, 50);
+            pointLight2.position.set(-10, -15, -10);
+            scene.add(pointLight2);
+
+            const pointLight3 = new THREE.PointLight(0x3b82f6, 2, 50);
+            pointLight3.position.set(0, 0, 15);
+            scene.add(pointLight3);
+
+            // Build 3D Objects
+            buildCyberEnvironment();
+            buildCPUArchitecture();
+            buildDNAHelix();
+            buildRNAParticles();
+            buildInjectionPackets();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            setupMouseInteraction(container);
+            setupUIControls();
+
+            // Start animation loop
+            window.requestAnimationFrame(animate);
+
+            // Terminal log updater timer
+            setInterval(pushRandomLog, 3000);
+            setInterval(updateMetrics, 1000);
+        }
+
+        // --- Environment & Background Grid ---
+        function buildCyberEnvironment() {
+            // Grid floor
+            const gridHelper = new THREE.GridHelper(60, 40, 0x00ffcc, 0x1f2937);
+            gridHelper.position.y = -12;
+            scene.add(gridHelper);
+
+            // Floating cyber particles background
+            const particleCount = 300;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 80;
+                positions[i + 1] = (Math.random() - 0.5) * 60;
+                positions[i + 2] = (Math.random() - 0.5) * 80;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.PointsMaterial({
+                color: 0x00ffcc,
+                size: 0.3,
+                transparent: true,
+                opacity: 0.6
+            });
+            const particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+        }
+
+        // --- CPU / GPU Silicon Microarchitecture (Central Voxel Core) ---
+        function buildCPUArchitecture() {
+            cpuCoreGroup = new THREE.Group();
+
+            // Central Silicon Die
+            const dieGeo = new THREE.BoxGeometry(6, 1.2, 6);
+            const dieMat = new THREE.MeshStandardMaterial({
+                color: 0x0b0f19,
+                metalness: 0.9,
+                roughness: 0.2,
+                wireframe: false
+            });
+            const dieMesh = new THREE.Mesh(dieGeo, dieMat);
+            cpuCoreGroup.add(dieMesh);
+
+            // Silicon Die Wireframe Glow
+            const wireMat = new THREE.MeshBasicMaterial({
+                color: 0x00ffcc,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.3
+            });
+            const wireMesh = new THREE.Mesh(dieGeo, wireMat);
+            wireMesh.scale.set(1.02, 1.02, 1.02);
+            cpuCoreGroup.add(wireMesh);
+
+            // GPU/CPU Voxel Compute Units (Array of glowing blocks)
+            const unitGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+            const cols = 4;
+            const spacing = 1.2;
+
+            for (let x = -cols/2; x < cols/2; x++) {
+                for (let z = -cols/2; z < cols/2; z++) {
+                    const colorHex = Math.random() > 0.5 ? 0x3b82f6 : 0x00ffcc;
+                    const mat = new THREE.MeshStandardMaterial({
+                        color: colorHex,
+                        emissive: colorHex,
+                        emissiveIntensity: 0.5,
+                        metalness: 0.8,
+                        roughness: 0.1
+                    });
+                    const unit = new THREE.Mesh(unitGeo, mat);
+                    unit.position.set(x * spacing + 0.6, 0.8, z * spacing + 0.6);
+                    cpuCoreGroup.add(unit);
+                }
+            }
+
+            // Outer golden pins / bus interface
+            const pinGeo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
+            const pinMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 1.0, roughness: 0.2 });
+            for (let i = -7; i <= 7; i += 2) {
+                const pin1 = new THREE.Mesh(pinGeo, pinMat);
+                pin1.position.set(i * 0.5, -0.8, 3.2);
+                cpuCoreGroup.add(pin1);
+
+                const pin2 = new THREE.Mesh(pinGeo, pinMat);
+                pin2.position.set(i * 0.5, -0.8, -3.2);
+                cpuCoreGroup.add(pin2);
+            }
+
+            cpuCoreGroup.position.y = -6;
+            scene.add(cpuCoreGroup);
+        }
+
+        // --- DNA Double Helix (Voxel Style) ---
+        let dnaSpheres = [];
+        function buildDNAHelix() {
+            dnaGroup = new THREE.Group();
+            dnaSpheres = [];
+
+            const numSteps = 30;
+            const radius = 4.5;
+            const heightStep = 0.7;
+
+            const baseColors = [0x00ffcc, 0xec4899, 0x3b82f6, 0xa855f7]; // A, T, G, C equivalent colors
+
+            for (let i = 0; i < numSteps; i++) {
+                const theta = i * 0.4;
+                const y = (i - numSteps / 2) * heightStep;
+
+                // Strand 1
+                const x1 = Math.cos(theta) * radius;
+                const z1 = Math.sin(theta) * radius;
+                
+                // Strand 2 (Opposite)
+                const x2 = Math.cos(theta + Math.PI) * radius;
+                const z2 = Math.sin(theta + Math.PI) * radius;
+
+                const color1 = baseColors[i % 4];
+                const color2 = baseColors[(i + 2) % 4];
+
+                // Voxel blocks for nucleotides
+                const boxGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                
+                const mat1 = new THREE.MeshStandardMaterial({ color: color1, emissive: color1, emissiveIntensity: 0.6 });
+                const mesh1 = new THREE.Mesh(boxGeo, mat1);
+                mesh1.position.set(x1, y, z1);
+                dnaGroup.add(mesh1);
+                dnaSpheres.push(mesh1);
+
+                const mat2 = new THREE.MeshStandardMaterial({ color: color2, emissive: color2, emissiveIntensity: 0.6 });
+                const mesh2 = new THREE.Mesh(boxGeo, mat2);
+                mesh2.position.set(x2, y, z2);
+                dnaGroup.add(mesh2);
+                dnaSpheres.push(mesh2);
+
+                // Connecting Base Pair Bridge (Cyan/Purple glowing line voxels)
+                if (i % 2 === 0) {
+                    const bridgeGeo = new THREE.BoxGeometry(0.3, 0.3, radius * 2);
+                    const bridgeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
+                    const bridge = new THREE.Mesh(bridgeGeo, bridgeMat);
+                    bridge.position.set(0, y, 0);
+                    bridge.rotation.y = -theta;
+                    dnaGroup.add(bridge);
+                }
+            }
+
+            dnaGroup.position.y = 3;
+            scene.add(dnaGroup);
+        }
+
+        // --- RNA Floating Cloud Particles ---
+        let rnaParticles;
+        function buildRNAParticles() {
+            const count = 250;
+            const geo = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+
+            const colorPink = new THREE.Color(0xec4899);
+            const colorPurple = new THREE.Color(0xa855f7);
+
+            for (let i = 0; i < count * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 16;
+                positions[i + 1] = (Math.random() - 0.5) * 18;
+                positions[i + 2] = (Math.random() - 0.5) * 16;
+
+                const mixedColor = Math.random() > 0.5 ? colorPink : colorPurple;
+                colors[i] = mixedColor.r;
+                colors[i + 1] = mixedColor.g;
+                colors[i + 2] = mixedColor.b;
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const mat = new THREE.PointsMaterial({
+                size: 0.5,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            rnaParticles = new THREE.Points(geo, mat);
+            scene.add(rnaParticles);
+        }
+
+        // --- Data Injection Packets (DNA/RNA streaming down to CPU) ---
+        let injectionPackets = [];
+        function buildInjectionPackets() {
+            injectionPacketsGroup = new THREE.Group();
+            const count = 30;
+            const packetGeo = new THREE.BoxGeometry(0.4, 1.2, 0.4);
+
+            for (let i = 0; i < count; i++) {
+                const mat = new THREE.MeshBasicMaterial({
+                    color: Math.random() > 0.5 ? 0x00ffcc : 0xec4899,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const packet = new THREE.Mesh(packetGeo, mat);
+                
+                resetPacketPosition(packet);
+                injectionPacketsGroup.add(packet);
+                injectionPackets.push(packet);
+            }
+
+            scene.add(injectionPacketsGroup);
+        }
+
+        function resetPacketPosition(packet) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * 3.5;
+            packet.position.set(
+                Math.cos(angle) * r,
+                12 + Math.random() * 8,
+                Math.sin(angle) * r
+            );
+            packet.userData = {
+                speed: 0.1 + Math.random() * 0.15
+            };
+        }
+
+        // --- Interaction & Controls ---
+        function setupMouseInteraction(container) {
+            container.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            container.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+
+                cameraAngleX -= deltaX * 0.008;
+                cameraAngleY = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, cameraAngleY + deltaY * 0.008));
+
+                updateCameraPosition();
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', () => { isDragging = false; });
+
+            // Touch support for mobile
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDragging = true;
+                    previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            });
+
+            container.addEventListener('touchmove', (e) => {
+                if (!isDragging || e.touches.length !== 1) return;
+                const deltaX = e.touches[0].clientX - previousMousePosition.x;
+                const deltaY = e.touches[0].clientY - previousMousePosition.y;
+
+                cameraAngleX -= deltaX * 0.008;
+                cameraAngleY = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, cameraAngleY + deltaY * 0.008));
+
+                updateCameraPosition();
+                previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            });
+
+            container.addEventListener('touchend', () => { isDragging = false; });
+        }
+
+        function updateCameraPosition() {
+            const x = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            const y = Math.sin(cameraAngleY) * cameraDistance;
+            const z = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            camera.position.set(x, y, z);
+            camera.lookAt(0, -1, 0);
+        }
+
+        function setupUIControls() {
+            const sliderPitch = document.getElementById('slider-pitch');
+            const valPitch = document.getElementById('val-pitch');
+            sliderPitch.addEventListener('input', (e) => {
+                helixPitch = parseFloat(e.target.value);
+                valPitch.innerText = helixPitch.toFixed(1);
+                rebuildDNAHelix();
+            });
+
+            const sliderInjection = document.getElementById('slider-injection');
+            const valInjection = document.getElementById('val-injection');
+            sliderInjection.addEventListener('input', (e) => {
+                injectionRate = parseFloat(e.target.value);
+                valInjection.innerText = injectionRate.toFixed(1) + 'x';
+            });
+
+            const sliderDensity = document.getElementById('slider-density');
+            const valDensity = document.getElementById('val-density');
+            sliderDensity.addEventListener('input', (e) => {
+                voxelDensity = parseInt(e.target.value);
+                valDensity.innerText = voxelDensity === 1 ? 'Low' : voxelDensity === 2 ? 'Med' : 'High';
+            });
+        }
+
+        function rebuildDNAHelix() {
+            scene.remove(dnaGroup);
+            buildDNAHelix();
+        }
+
+        function toggleSimulationState() {
+            isRunning = !isRunning;
+            const statusBadge = document.getElementById('sim-status');
+            const textPause = document.getElementById('text-pause');
+            const iconPause = document.getElementById('icon-pause');
+
+            if (isRunning) {
+                statusBadge.innerText = 'RUNNING';
+                statusBadge.className = 'text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-800';
+                textPause.innerText = 'Pause Sim';
+                iconPause.className = 'fa-solid fa-pause';
+            } else {
+                statusBadge.innerText = 'PAUSED';
+                statusBadge.className = 'text-[10px] bg-amber-950 text-amber-400 px-2 py-0.5 rounded-full border border-amber-800';
+                textPause.innerText = 'Resume Sim';
+                iconPause.className = 'fa-solid fa-play';
+            }
+        }
+
+        function triggerBurstMutation() {
+            // Flash screen or scale up core temporarily
+            if (cpuCoreGroup) {
+                cpuCoreGroup.scale.set(1.2, 1.2, 1.2);
+                setTimeout(() => { cpuCoreGroup.scale.set(1, 1, 1); }, 300);
+            }
+            if (dnaGroup) {
+                dnaGroup.rotation.y += Math.PI / 4;
+            }
+            addTerminalLog('[MUTATION] Quantum genetic-to-silicon override triggered! Neural tensor weights rescaled.', 'text-cyber-accent');
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            window.requestAnimationFrame(animate);
+
+            if (!isRunning) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // Rotate DNA Double Helix
+            if (dnaGroup) {
+                dnaGroup.rotation.y = time * 0.5 * simulationSpeed;
+            }
+
+            // Rotate CPU core slightly
+            if (cpuCoreGroup) {
+                cpuCoreGroup.rotation.y = -time * 0.2 * simulationSpeed;
+            }
+
+            // Animate RNA particle cloud
+            if (rnaParticles) {
+                rnaParticles.rotation.y = -time * 0.15;
+                const pos = rnaParticles.geometry.attributes.position.array;
+                for (let i = 1; i < pos.length; i += 3) {
+                    pos[i] -= 0.05 * simulationSpeed;
+                    if (pos[i] < -10) pos[i] = 10;
+                }
+                rnaParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Animate Injection Packets streaming down from DNA to CPU
+            if (injectionPackets) {
+                injectionPackets.forEach(packet => {
+                    packet.position.y -= packet.userData.speed * simulationSpeed * (injectionRate * 0.3);
+                    packet.rotation.x += 0.02;
+                    packet.rotation.y += 0.03;
+
+                    if (packet.position.y < -6) {
+                        resetPacketPosition(packet);
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Dynamic Terminal & Metrics ---
+        const sampleLogs = [
+            { text: 'RNA sequence matched with GPU Tensor Core #4092.', color: 'text-cyber-pink' },
+            { text: 'DNA base pair stability optimal at 99.9%.', color: 'text-cyber-accent' },
+            { text: 'Silicon bus frequency increased by +12.4 GHz.', color: 'text-cyber-blue' },
+            { text: 'Bio-digital compiler synthesized 4,120 custom microcode instructions.', color: 'text-cyber-purple' },
+            { text: 'Thermal dissipation nominal across organic-silicon interface.', color: 'text-yellow-400' }
+        ];
+
+        function addTerminalLog(text, colorClass = 'text-gray-300') {
+            const term = document.getElementById('terminal-logs');
+            const now = new Date().toTimeString().split(' ')[0];
+            const div = document.createElement('div');
+            div.className = colorClass;
+            div.innerText = `[${now}] ${text}`;
+            term.appendChild(div);
+            term.scrollTop = term.scrollHeight;
+
+            // Keep max 30 logs
+            if (term.children.length > 30) {
+                term.removeChild(term.firstChild);
+            }
+        }
+
+        function pushRandomLog() {
+            if (!isRunning) return;
+            const log = sampleLogs[Math.floor(Math.random() * sampleLogs.length)];
+            addTerminalLog(log.text, log.color);
+        }
+
+        function updateMetrics() {
+            if (!isRunning) return;
+            // Slight jitter for realism
+            const rnaVal = Math.floor(800 + Math.random() * 100);
+            const flopsVal = Math.floor(140 + Math.random() * 15);
+            const tempVal = (38 + Math.random() * 2.5).toFixed(1);
+
+            document.getElementById('metric-rna').innerText = rnaVal + ' GB/s';
+            document.getElementById('metric-flops').innerText = flopsVal + ' PFLOPS';
+            document.getElementById('metric-temp').innerText = tempVal + '°C';
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
